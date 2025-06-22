@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Detection Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        canvas {
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl p-8 max-w-4xl w-full">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Food Detection App</h1>
+            
+            <div class="flex flex-col md:flex-row gap-8">
+                <!-- Left: Image Upload and Canvas -->
+                <div class="flex-1">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-2">Upload Food Image</label>
+                        <input type="file" id="fileInput" accept="image/*" 
+                               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 
+                                      file:rounded-full file:border-0 file:text-sm file:font-semibold 
+                                      file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    </div>
+                    <button onclick="uploadImage()" 
+                            class="w-full bg-blue-600 text-white py-2 px-4 rounded-full hover:bg-blue-700 transition duration-300 mb-4">
+                        Upload & Detect
+                    </button>
+                    <canvas id="canvas" width="640" height="640" class="w-full"></canvas>
+                </div>
+                
+                <!-- Right: Detection Results -->
+                <div class="flex-1">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Detection Results</h2>
+                    <div id="results" class="bg-gray-50 p-6 rounded-lg">
+                        <div id="noResults" class="text-gray-500 italic">No results yet. Upload an image to see nutritional information.</div>
+                        <div id="nutritionInfo" class="hidden space-y-6">
+                            <!-- Detected items will be dynamically added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function uploadImage() {
+            const input = document.getElementById('fileInput');
+            const file = input.files[0];
+
+            if (!file) {
+                alert("Please select an image!");
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = async function (e) {
+                const img = new Image();
+                img.src = e.target.result;
+
+                img.onload = async function () {
+                    const canvas = document.getElementById('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    // Draw image to canvas (640x640)
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, 640, 640);
+
+                    // Send image to backend
+                    const formData = new FormData();
+                    formData.append("file", file);
+
+                    try {
+                        const response = await fetch("http://127.0.0.1:8000/predict", {
+                            method: "POST",
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error("Failed to fetch detection results");
+                        }
+
+                        const data = await response.json();
+
+                        // Draw bounding boxes
+                        ctx.lineWidth = 2;
+                        ctx.font = "16px Arial";
+                        ctx.strokeStyle = "#ef4444";
+                        ctx.fillStyle = "#ef4444";
+
+                        data.detections.forEach(det => {
+                            const [x1, y1, x2, y2] = det.box;
+                            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                            ctx.fillText(`${det.class_name} (${(det.confidence * 100).toFixed(1)}%)`, x1, y1 - 5);
+                        });
+
+                        // Update nutritional information
+                        const nutritionInfo = document.getElementById('nutritionInfo');
+                        const noResults = document.getElementById('noResults');
+                        noResults.classList.add('hidden');
+                        nutritionInfo.classList.remove('hidden');
+
+                        // Clear previous results
+                        nutritionInfo.innerHTML = '';
+
+                        // Display nutritional info for each detected food
+                        data.detections.forEach(det => {
+                            const foodName = det.class_name || "Unknown";
+                            const nutrition = det.nutrition || {
+                                "Calories (kcal)": "N/A",
+                                "Protein (g)": "N/A",
+                                "Carbohydrates (g)": "N/A",
+                                "Fat (g)": "N/A",
+                                "Fiber (g)": "N/A"
+                            };
+
+                            const foodDiv = document.createElement('div');
+                            foodDiv.className = 'border-b border-gray-200 pb-4';
+                            foodDiv.innerHTML = `
+                                <div class="mb-2">
+                                    <span class="font-bold text-gray-700">Food Name:</span>
+                                    <span class="text-gray-900">${foodName} (${(det.confidence * 100).toFixed(1)}%)</span>
+                                </div>
+                                <div class="mb-2">
+                                    <span class="font-bold text-gray-700">Calories (kcal):</span>
+                                    <span class="text-gray-900">${nutrition["Calories (kcal)"]}</span>
+                                </div>
+                                <div class="mb-2">
+                                    <span class="font-bold text-gray-700">Protein (g):</span>
+                                    <span class="text-gray-900">${nutrition["Protein (g)"]}</span>
+                                </div>
+                                <div class="mb-2">
+                                    <span class="font-bold text-gray-700">Carbohydrates (g):</span>
+                                    <span class="text-gray-900">${nutrition["Carbohydrates (g)"]}</span>
+                                </div>
+                                <div class="mb-2">
+                                    <span class="font-bold text-gray-700">Fat (g):</span>
+                                    <span class="text-gray-900">${nutrition["Fat (g)"]}</span>
+                                </div>
+                                <div>
+                                    <span class="font-bold text-gray-700">Fiber (g):</span>
+                                    <span class="text-gray-900">${nutrition["Fiber (g)"]}</span>
+                                </div>
+                            `;
+                            nutritionInfo.appendChild(foodDiv);
+                        });
+                    } catch (error) {
+                        console.error("Error:", error);
+                        alert("Failed to process image. Please try again.");
+                    }
+                };
+            };
+
+            reader.readAsDataURL(file);
+        }
+    </script>
+</body>
+</html>
