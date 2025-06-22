@@ -3,9 +3,9 @@ __pycache__/
 *.pyc
 
 # Env & venv
-*.env
+
 venv/
-.env
+
 
 # System
 .DS_Store
